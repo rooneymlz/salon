@@ -38,11 +38,11 @@
     import { 
       Calendar, Clock, DollarSign, User, Settings, Scissors, CheckCircle, 
       Trash2, ChevronLeft, ChevronRight, BarChart3, Plus, Home, Save, 
-      Palette, Image as ImageIcon, Download, Search, History, Filter, AlertCircle 
+      Palette, Image as ImageIcon, Download, Search, History, Filter, AlertCircle,
+      Smartphone, Share, MoreVertical, X
     } from 'https://esm.sh/lucide-react@0.263.1';
 
     // --- SISTEMA DE ARMAZENAMENTO LOCAL (LOCALSTORAGE) ---
-    // Substitui o Firebase para funcionar offline no arquivo baixado
     const STORAGE_KEY_DATA = 'beauty_agenda_data';
     const STORAGE_KEY_SETTINGS = 'beauty_agenda_settings';
 
@@ -116,7 +116,7 @@
       const handleSaveAppointment = (data) => {
         try {
           const updatedList = LocalDB.saveAppointment(data);
-          setAppointments(updatedList); // Atualiza a tela instantaneamente
+          setAppointments(updatedList); 
           showNotification(data.id ? 'Atualizado!' : 'Agendado!');
           setIsModalOpen(false);
           setEditingAppointment(null);
@@ -375,8 +375,55 @@
       );
     }
 
+    function InstallModal({ isOpen, onClose, branding }) {
+      if (!isOpen) return null;
+      return (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in" onClick={onClose}>
+          <div className="bg-white w-full max-w-sm rounded-3xl p-6 relative animate-slide-up" onClick={e => e.stopPropagation()}>
+            <button onClick={onClose} className="absolute top-4 right-4 text-gray-400"><X size={24}/></button>
+            <div className="text-center mb-6">
+              <div className="mx-auto w-16 h-16 rounded-2xl mb-3 flex items-center justify-center text-3xl shadow-lg" style={{background:branding.gradient || branding.color, color:'white'}}>
+                <Smartphone size={32} />
+              </div>
+              <h3 className="text-xl font-bold text-gray-800">Adicionar à Tela Inicial</h3>
+              <p className="text-sm text-gray-500 mt-1">Tenha acesso rápido como um App nativo</p>
+            </div>
+
+            <div className="space-y-6">
+              {/* iOS Instructions */}
+              <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
+                <div className="flex items-center mb-2 text-gray-800 font-bold">
+                  <span className="mr-2">🍎</span> iPhone / iPad
+                </div>
+                <ol className="text-sm text-gray-600 space-y-2 list-decimal pl-4">
+                  <li>Toque no botão <strong className="text-blue-500 inline-flex items-center"><Share size={14} className="mx-1"/> Compartilhar</strong> na barra inferior do Safari.</li>
+                  <li>Role para baixo e selecione <strong className="text-gray-800">Adicionar à Tela de Início</strong>.</li>
+                  <li>Confirme clicando em <strong>Adicionar</strong>.</li>
+                </ol>
+              </div>
+
+              {/* Android Instructions */}
+              <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
+                <div className="flex items-center mb-2 text-gray-800 font-bold">
+                  <span className="mr-2">🤖</span> Android (Chrome)
+                </div>
+                <ol className="text-sm text-gray-600 space-y-2 list-decimal pl-4">
+                  <li>Toque no menu <strong className="text-gray-800 inline-flex items-center"><MoreVertical size={14} className="mx-1"/> (Três pontos)</strong> no canto superior.</li>
+                  <li>Selecione <strong className="text-gray-800">Adicionar à tela inicial</strong> ou <strong>Instalar aplicativo</strong>.</li>
+                  <li>Confirme a instalação.</li>
+                </ol>
+              </div>
+            </div>
+            
+            <button onClick={onClose} className="mt-6 w-full py-3 rounded-xl font-bold bg-gray-100 text-gray-600">Entendi</button>
+          </div>
+        </div>
+      );
+    }
+
     function SettingsView({ branding, onSave }) {
       const [form, setForm] = useState(branding);
+      const [showInstall, setShowInstall] = useState(false);
       const colors = ['#ec4899', '#8b5cf6', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#1f2937'];
       const gradients = [
         { name: 'Sunset', bg: 'linear-gradient(to right, #FF512F, #DD2476)', solid: '#DD2476' },
@@ -416,7 +463,17 @@
             <div><label className="block text-sm font-medium text-gray-700 mb-2">Início</label><input type="time" value={form.startHour} onChange={e=>setForm({...form,startHour:e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3"/></div>
             <div><label className="block text-sm font-medium text-gray-700 mb-2">Fim</label><input type="time" value={form.endHour} onChange={e=>setForm({...form,endHour:e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3"/></div>
           </div>
-          <button onClick={()=>onSave(form)} className="w-full py-4 mt-4 rounded-xl text-white font-bold shadow-lg" style={{background:form.gradient||form.color}}>Salvar Alterações</button>
+
+          {/* Botão Criar Atalho */}
+          <div className="pt-2">
+            <button onClick={()=>setShowInstall(true)} className="w-full py-3 rounded-xl border-2 border-gray-200 text-gray-600 font-bold flex items-center justify-center hover:bg-gray-50 transition">
+              <Smartphone size={18} className="mr-2"/> Criar Atalho / Instalar
+            </button>
+          </div>
+
+          <button onClick={()=>onSave(form)} className="w-full py-4 mt-2 rounded-xl text-white font-bold shadow-lg" style={{background:form.gradient||form.color}}>Salvar Alterações</button>
+          
+          <InstallModal isOpen={showInstall} onClose={()=>setShowInstall(false)} branding={form} />
         </div>
       );
     }
