@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Agenda Beauty Pro</title>
+  
+  <!-- Tailwind CSS (Estilos) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Babel (Para entender o código React dentro do HTML) -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    /* Ajustes para mobile e animações */
+    body { -webkit-tap-highlight-color: transparent; }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+    
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    
+    .animate-fade-in { animation: fadeIn 0.2s ease-out; }
+    .animate-slide-up { animation: slideUp 0.3s ease-out; }
+    .animate-fade-in-up { animation: slideUp 0.4s ease-out; }
+  </style>
+</head>
+<body class="bg-gray-50 text-gray-800 select-none">
+  
+  <!-- Onde o App vai ser desenhado -->
+  <div id="root"></div>
+
+  <!-- Lógica do Aplicativo -->
+  <script type="text/babel" data-type="module">
+    import React, { useState, useEffect, useMemo } from 'https://esm.sh/react@18.2.0';
+    import ReactDOM from 'https://esm.sh/react-dom@18.2.0/client';
+    import { 
+      Calendar, Clock, DollarSign, User, Settings, Scissors, CheckCircle, 
+      Trash2, ChevronLeft, ChevronRight, BarChart3, Plus, Home, Save, 
+      Palette, Image as ImageIcon, Download, Search, History, Filter, AlertCircle 
+    } from 'https://esm.sh/lucide-react@0.263.1';
+
+    // --- SISTEMA DE ARMAZENAMENTO LOCAL (LOCALSTORAGE) ---
+    // Substitui o Firebase para funcionar offline no arquivo baixado
+    const STORAGE_KEY_DATA = 'beauty_agenda_data';
+    const STORAGE_KEY_SETTINGS = 'beauty_agenda_settings';
+
+    const LocalDB = {
+      getAppointments: () => {
+        const data = localStorage.getItem(STORAGE_KEY_DATA);
+        return data ? JSON.parse(data) : [];
+      },
+      saveAppointment: (appt) => {
+        const data = LocalDB.getAppointments();
+        const index = data.findIndex(a => a.id === appt.id);
+        if (index >= 0) {
+          data[index] = { ...appt, updatedAt: new Date().toISOString() };
+        } else {
+          data.push({ ...appt, id: crypto.randomUUID(), createdAt: new Date().toISOString(), status: 'scheduled' });
+        }
+        localStorage.setItem(STORAGE_KEY_DATA, JSON.stringify(data));
+        return data;
+      },
+      deleteAppointment: (id) => {
+        const data = LocalDB.getAppointments().filter(a => a.id !== id);
+        localStorage.setItem(STORAGE_KEY_DATA, JSON.stringify(data));
+        return data;
+      },
+      getSettings: () => {
+        const data = localStorage.getItem(STORAGE_KEY_SETTINGS);
+        return data ? JSON.parse(data) : {
+          name: 'Meu Espaço Beauty',
+          color: '#ec4899',
+          gradient: null,
+          logoUrl: '',
+          startHour: '09:00',
+          endHour: '19:00',
+          slotDuration: 30
+        };
+      },
+      saveSettings: (settings) => {
+        localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
+        return settings;
+      }
+    };
+
+    // --- Componente Principal ---
+    function AgendaApp() {
+      const [activeTab, setActiveTab] = useState('agenda');
+      const [selectedDate, setSelectedDate] = useState(new Date());
+      
+      // Estado de Dados
+      const [appointments, setAppointments] = useState([]);
+      const [branding, setBranding] = useState(LocalDB.getSettings());
+      
+      const [isModalOpen, setIsModalOpen] = useState(false);
+      const [editingAppointment, setEditingAppointment] = useState(null);
+      const [notification, setNotification] = useState(null);
+
+      // Carregar Dados Iniciais
+      useEffect(() => {
+        setAppointments(LocalDB.getAppointments());
+        setBranding(LocalDB.getSettings());
+      }, []);
+
+      // Utilitários
+      const showNotification = (message, type = 'success') => {
+        setNotification({ message, type });
+        setTimeout(() => setNotification(null), 3000);
+      };
+
+      const formatDateKey = (date) => date.toISOString().split('T')[0];
+
+      // Ações do Banco Local
+      const handleSaveAppointment = (data) => {
+        try {
+          const updatedList = LocalDB.saveAppointment(data);
+          setAppointments(updatedList); // Atualiza a tela instantaneamente
+          showNotification(data.id ? 'Atualizado!' : 'Agendado!');
+          setIsModalOpen(false);
+          setEditingAppointment(null);
+        } catch (e) { showNotification('Erro ao salvar', 'error'); }
+      };
+
+      const handleDeleteAppointment = (id) => {
+        try {
+          const updatedList = LocalDB.deleteAppointment(id);
+          setAppointments(updatedList);
+          showNotification('Excluído.');
+          setIsModalOpen(false);
+        } catch (e) { showNotification('Erro ao excluir', 'error'); }
+      };
+
+      const handleToggleStatus = (appointment) => {
+        try {
+          const newStatus = appointment.status === 'completed' ? 'scheduled' : 'completed';
+          const updatedAppt = { ...appointment, status: newStatus };
+          const updatedList = LocalDB.saveAppointment(updatedAppt);
+          setAppointments(updatedList);
+          showNotification(newStatus === 'completed' ? 'Concluído!' : 'Pendente.');
+        } catch (e) {}
+      };
+
+      const handleSaveSettings = (newSettings) => {
+        const saved = LocalDB.saveSettings(newSettings);
+        setBranding(saved);
+        showNotification('Configurações salvas!');
+      };
+
+      const bgStyle = { background: branding.gradient || branding.color };
+
+      return (
+        <div className="min-h-screen bg-gray-50 font-sans text-gray-800 pb-20 relative overflow-hidden">
+          {notification && (
+            <div className={`fixed top-4 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 rounded-lg shadow-lg text-white text-sm font-medium animate-fade-in-down ${notification.type === 'error' ? 'bg-red-500' : 'bg-green-600'}`}>
+              {notification.message}
+            </div>
+          )}
+
+          <header className="text-white shadow-lg rounded-b-3xl px-6 pt-8 pb-12 mb-[-20px] relative z-10 transition-all duration-500" style={bgStyle}>
+            <div className="flex justify-between items-center mb-4">
+              <div className="flex items-center space-x-3">
+                {branding.logoUrl ? (
+                  <img src={branding.logoUrl} alt="Logo" className="w-12 h-12 rounded-full border-2 border-white object-cover bg-white" />
+                ) : (
+                  <div className="w-12 h-12 rounded-full border-2 border-white flex items-center justify-center bg-white/20 text-2xl">✂️</div>
+                )}
+                <div>
+                  <h1 className="text-xl font-bold leading-tight">{branding.name}</h1>
+                  <p className="text-xs opacity-90">Gestão Profissional</p>
+                </div>
+              </div>
+              <button onClick={() => setActiveTab('settings')} className="p-2 hover:bg-white/20 rounded-full transition"><Settings size={20} /></button>
+            </div>
+          </header>
+
+          <main className="px-4 relative z-20">
+            {activeTab === 'agenda' && (
+              <AgendaView 
+                appointments={appointments} selectedDate={selectedDate} setSelectedDate={setSelectedDate}
+                onAdd={(time) => { setEditingAppointment({ time, date: formatDateKey(selectedDate) }); setIsModalOpen(true); }}
+                onEdit={(app) => { setEditingAppointment(app); setIsModalOpen(true); }}
+                branding={branding}
+              />
+            )}
+            {activeTab === 'history' && <HistoryView appointments={appointments} branding={branding} />}
+            {activeTab === 'finance' && <FinanceView appointments={appointments} branding={branding} />}
+            {activeTab === 'settings' && <SettingsView branding={branding} onSave={handleSaveSettings} />}
+          </main>
+
+          <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg px-6 py-3 flex justify-between items-center z-40 pb-safe">
+            <NavButton icon={Calendar} label="Agenda" active={activeTab === 'agenda'} onClick={() => setActiveTab('agenda')} color={branding.color} />
+            <NavButton icon={History} label="Histórico" active={activeTab === 'history'} onClick={() => setActiveTab('history')} color={branding.color} />
+            <div className="relative -top-6">
+              <button onClick={() => { setEditingAppointment(null); setIsModalOpen(true); }} className="w-14 h-14 rounded-full text-white shadow-lg flex items-center justify-center transform transition active:scale-95" style={bgStyle}>
+                <Plus size={28} />
+              </button>
+            </div>
+            <NavButton icon={BarChart3} label="Finan." active={activeTab === 'finance'} onClick={() => setActiveTab('finance')} color={branding.color} />
+          </nav>
+
+          {isModalOpen && (
+            <AppointmentModal 
+              isOpen={isModalOpen} onClose={() => setIsModalOpen(false)}
+              onSave={handleSaveAppointment} onDelete={handleDeleteAppointment}
+              onToggleStatus={handleToggleStatus} initialData={editingAppointment}
+              selectedDate={selectedDate} branding={branding}
+            />
+          )}
+        </div>
+      );
+    }
+
+    // --- Sub-Componentes ---
+    function NavButton({ icon: Icon, label, active, onClick, color }) {
+      return (
+        <button onClick={onClick} className={`flex flex-col items-center space-y-1 transition-colors w-16 ${active ? '' : 'text-gray-400'}`} style={{ color: active ? color : undefined }}>
+          <Icon size={22} />
+          <span className="text-[10px] font-medium truncate w-full text-center">{label}</span>
+        </button>
+      );
+    }
+
+    function AgendaView({ appointments, selectedDate, setSelectedDate, onAdd, onEdit, branding }) {
+      const weekDays = useMemo(() => {
+        const days = [];
+        const current = new Date(selectedDate);
+        current.setDate(current.getDate() - 2);
+        for (let i = 0; i < 5; i++) { days.push(new Date(current)); current.setDate(current.getDate() + 1); }
+        return days;
+      }, [selectedDate]);
+
+      const timeSlots = useMemo(() => {
+        const slots = [];
+        const start = parseInt(branding.startHour.split(':')[0]);
+        const end = parseInt(branding.endHour.split(':')[0]);
+        const duration = branding.slotDuration || 30;
+        let mins = start * 60;
+        const limit = end * 60 + (duration === 30 ? 30 : 0);
+        while(mins <= limit) {
+          if (Math.floor(mins/60) > 23) break;
+          slots.push(`${Math.floor(mins/60).toString().padStart(2,'0')}:${(mins%60).toString().padStart(2,'0')}`);
+          mins += duration;
+        }
+        return slots;
+      }, [branding]);
+
+      const dateKey = selectedDate.toISOString().split('T')[0];
+      const dayApps = appointments.filter(a => a.date === dateKey).sort((a,b) => a.time.localeCompare(b.time));
+      const monthYear = selectedDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+
+      return (
+        <div className="bg-white rounded-3xl shadow-sm min-h-[70vh] pb-4 animate-fade-in-up">
+          <div className="pt-4 px-4 pb-0 flex justify-center">
+            <div className="relative group">
+              <input type="date" value={dateKey} onChange={e => { if(e.target.value) { const [y,m,d] = e.target.value.split('-'); setSelectedDate(new Date(y,m-1,d)); }}} 
+                onClick={(e) => { try { if(e.target.showPicker) e.target.showPicker(); } catch(err){} }}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
+              <div className="flex items-center space-x-2 bg-gray-50 px-4 py-2 rounded-full text-gray-700 group-hover:bg-gray-100 transition border border-transparent group-hover:border-gray-200">
+                <Calendar size={16} style={{ color: branding.color }} />
+                <span className="font-bold capitalize text-sm">{monthYear}</span>
+                <ChevronRight size={14} className="text-gray-400 rotate-90" />
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center justify-between p-4 border-b border-gray-100">
+            <button onClick={() => { const d = new Date(selectedDate); d.setDate(d.getDate()-1); setSelectedDate(d); }} className="p-1 rounded-full hover:bg-gray-100"><ChevronLeft size={20}/></button>
+            <div className="flex space-x-2 overflow-x-auto no-scrollbar px-2">
+              {weekDays.map((day, idx) => {
+                const isSel = day.getDate() === selectedDate.getDate();
+                const isToday = day.getDate() === new Date().getDate() && day.getMonth() === new Date().getMonth();
+                return (
+                  <button key={idx} onClick={() => setSelectedDate(day)} className={`flex flex-col items-center justify-center w-12 h-14 rounded-2xl transition-all ${isSel ? 'text-white shadow-md scale-105' : 'text-gray-500 hover:bg-gray-50'}`} style={{ background: isSel ? (branding.gradient || branding.color) : 'transparent' }}>
+                    <span className="text-[10px] uppercase font-bold opacity-80">{day.toLocaleDateString('pt-BR', {weekday:'short'}).replace('.','')}</span>
+                    <span className={`text-lg font-bold ${isToday && !isSel ? 'text-'+branding.color : ''}`}>{day.getDate()}</span>
+                  </button>
+                )
+              })}
+            </div>
+            <button onClick={() => { const d = new Date(selectedDate); d.setDate(d.getDate()+1); setSelectedDate(d); }} className="p-1 rounded-full hover:bg-gray-100"><ChevronRight size={20}/></button>
+          </div>
+          <div className="p-4 space-y-3">
+            {timeSlots.map(time => {
+              const app = dayApps.find(a => a.time === time);
+              if (app) {
+                const isDone = app.status === 'completed';
+                return (
+                  <div key={time} onClick={() => onEdit(app)} className={`relative flex items-center p-3 rounded-2xl border-l-4 shadow-sm transition-all hover:shadow-md cursor-pointer ${isDone ? 'bg-green-50 border-green-500 opacity-70' : 'bg-white border-'+branding.color}`} style={{ borderLeftColor: isDone ? undefined : branding.color }}>
+                     <div className="mr-4 text-sm font-bold text-gray-700 w-12">{time}</div>
+                     <div className="flex-1">
+                       <h3 className={`font-bold text-gray-800 ${isDone ? 'line-through' : ''}`}>{app.clientName}</h3>
+                       <div className="flex justify-between items-center text-xs text-gray-500 mt-1">
+                         <span className="flex items-center"><Scissors size={12} className="mr-1"/> {app.service}</span>
+                         <span className="font-semibold text-gray-700">R$ {parseFloat(app.value).toFixed(2)}</span>
+                       </div>
+                     </div>
+                     {isDone && <CheckCircle size={18} className="text-green-600 ml-2" />}
+                  </div>
+                );
+              }
+              return (
+                <div key={time} className="flex items-center group cursor-pointer" onClick={() => onAdd(time)}>
+                  <div className="mr-4 text-xs font-medium text-gray-500 w-12">{time}</div>
+                  <div className="flex-1 border-b border-gray-100 border-dashed h-8 relative group-hover:border-gray-300 transition-colors">
+                     <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><Plus size={16} className="text-gray-400" /></div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+
+    function HistoryView({ appointments, branding }) {
+      const [search, setSearch] = useState('');
+      const [month, setMonth] = useState('');
+      const filtered = useMemo(() => appointments.filter(a => {
+        const matchSearch = a.clientName.toLowerCase().includes(search.toLowerCase()) || a.service.toLowerCase().includes(search.toLowerCase());
+        const matchMonth = month ? a.date.startsWith(month) : true;
+        return matchSearch && matchMonth;
+      }).sort((a,b) => new Date(b.date) - new Date(a.date)), [appointments, search, month]);
+
+      return (
+        <div className="bg-white rounded-3xl shadow-sm min-h-[70vh] p-6 animate-fade-in-up">
+          <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center"><History size={24} className="mr-2" style={{color:branding.color}}/> Histórico</h2>
+          <div className="space-y-3 mb-6">
+            <div className="flex items-center bg-gray-50 border border-gray-200 rounded-xl px-3 py-3"><Search size={18} className="text-gray-400 mr-2"/><input type="text" placeholder="Buscar..." value={search} onChange={e=>setSearch(e.target.value)} className="bg-transparent w-full outline-none text-gray-700"/></div>
+            <div className="flex items-center bg-gray-50 border border-gray-200 rounded-xl px-3 py-3"><Filter size={18} className="text-gray-400 mr-2"/><input type="month" value={month} onChange={e=>setMonth(e.target.value)} className="bg-transparent w-full outline-none text-gray-700"/></div>
+          </div>
+          <div className="space-y-3">
+            {filtered.length===0 ? <p className="text-center text-gray-400 py-10">Nada encontrado.</p> : filtered.map(app => (
+              <div key={app.id} className="flex justify-between p-4 border-b border-gray-50 hover:bg-gray-50 rounded-xl">
+                 <div><div className="text-xs text-gray-400 mb-1">{app.date.split('-').reverse().join('/')} • {app.time}</div><h4 className="font-bold text-gray-800">{app.clientName}</h4><p className="text-sm text-gray-500">{app.service}</p></div>
+                 <div className="text-right"><div className="font-bold text-gray-600">R$ {parseFloat(app.value).toFixed(2)}</div></div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    function FinanceView({ appointments, branding }) {
+      const stats = useMemo(() => {
+        const now = new Date();
+        const start = new Date(now); start.setDate(now.getDate() - now.getDay()); start.setHours(0,0,0,0);
+        const end = new Date(start); end.setDate(start.getDate() + 6); end.setHours(23,59,59,999);
+        const weekApps = appointments.filter(a => { const d = new Date(a.date+'T'+a.time); return d>=start && d<=end && a.status==='completed'; });
+        const total = weekApps.reduce((s,a) => s + parseFloat(a.value||0), 0);
+        const byService = {}; weekApps.forEach(a => { byService[a.service] = (byService[a.service]||0) + parseFloat(a.value||0); });
+        return { total, count: weekApps.length, byService };
+      }, [appointments]);
+
+      const exportCsv = () => {
+        let csv = "Data,Horário,Cliente,Serviço,Valor,Status\n";
+        appointments.sort((a,b)=>new Date(b.date)-new Date(a.date)).forEach(a => {
+          csv += `${a.date.split('-').reverse().join('/')},${a.time},"${a.clientName}","${a.service}",${a.value.toString().replace('.',',')},${a.status==='completed'?'Concluído':'Agendado'}\n`;
+        });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(new Blob(["\ufeff"+csv], {type:'text/csv;charset=utf-8;'}));
+        link.download = `agenda_${new Date().toISOString().split('T')[0]}.csv`;
+        link.click();
+      };
+
+      return (
+        <div className="space-y-6 pt-2 animate-fade-in-up">
+          <div className="bg-white p-6 rounded-3xl shadow-sm text-center">
+            <h2 className="text-gray-500 text-sm font-medium mb-1">Faturamento da Semana</h2>
+            <div className="text-4xl font-bold text-gray-800" style={{color:branding.color}}>{new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(stats.total)}</div>
+            <div className="mt-2 inline-block px-3 py-1 bg-gray-100 rounded-full text-xs text-gray-600">{stats.count} atendimentos</div>
+          </div>
+          <button onClick={exportCsv} className="w-full bg-gray-800 text-white p-4 rounded-2xl flex items-center justify-center space-x-2 shadow-lg active:scale-95 transition"><Download size={20} /><span className="font-bold">Baixar Planilha</span></button>
+        </div>
+      );
+    }
+
+    function SettingsView({ branding, onSave }) {
+      const [form, setForm] = useState(branding);
+      const colors = ['#ec4899', '#8b5cf6', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#1f2937'];
+      const gradients = [
+        { name: 'Sunset', bg: 'linear-gradient(to right, #FF512F, #DD2476)', solid: '#DD2476' },
+        { name: 'Ocean', bg: 'linear-gradient(to right, #00b09b, #96c93d)', solid: '#00b09b' },
+        { name: 'Purple Love', bg: 'linear-gradient(to right, #cc2b5e, #753a88)', solid: '#753a88' },
+        { name: 'Royal', bg: 'linear-gradient(to right, #141E30, #243B55)', solid: '#243B55' },
+        { name: 'Peach', bg: 'linear-gradient(to right, #FF416C, #FF4B2B)', solid: '#FF416C' },
+        { name: 'Azul Moderno', bg: 'linear-gradient(to right, #4facfe 0%, #00f2fe 100%)', solid: '#4facfe' }
+      ];
+
+      return (
+        <div className="bg-white rounded-3xl shadow-sm p-6 space-y-6 animate-fade-in-up">
+          <h2 className="text-xl font-bold text-gray-800 mb-4">Configurações</h2>
+          <div><label className="block text-sm font-medium text-gray-700 mb-2">Nome</label><div className="flex bg-gray-50 rounded-xl px-4 py-3 border border-gray-200"><Home size={18} className="text-gray-400 mr-3"/><input type="text" value={form.name} onChange={e=>setForm({...form,name:e.target.value})} className="bg-transparent w-full outline-none text-gray-700"/></div></div>
+          <div><label className="block text-sm font-medium text-gray-700 mb-2">Logo (URL)</label><div className="flex bg-gray-50 rounded-xl px-4 py-3 border border-gray-200"><ImageIcon size={18} className="text-gray-400 mr-3"/><input type="text" value={form.logoUrl} onChange={e=>setForm({...form,logoUrl:e.target.value})} className="bg-transparent w-full outline-none text-sm"/></div></div>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-3">Temas</label>
+            <div className="space-y-4">
+              <div>
+                <span className="text-xs text-gray-400 uppercase font-bold tracking-wider mb-2 block">Cores Sólidas</span>
+                <div className="flex space-x-3 overflow-x-auto pb-2 no-scrollbar">{colors.map(c=><button key={c} onClick={()=>setForm({...form,color:c,gradient:null})} className={`w-10 h-10 rounded-full flex-shrink-0 transition-transform ${form.color===c&&!form.gradient?'scale-110 ring-2 ring-gray-300':''}`} style={{background:c}}/>)}</div>
+              </div>
+              <div>
+                 <span className="text-xs text-gray-400 uppercase font-bold tracking-wider mb-2 block">Degradês Premium</span>
+                 <div className="flex space-x-3 overflow-x-auto pb-2 no-scrollbar">{gradients.map(g=><button key={g.name} onClick={()=>setForm({...form,color:g.solid,gradient:g.bg})} className={`w-10 h-10 rounded-full flex-shrink-0 transition-transform ${form.gradient===g.bg?'scale-110 ring-2 ring-gray-300':''}`} style={{background:g.bg}}/>)}</div>
+              </div>
+            </div>
+          </div>
+
+          <div><label className="block text-sm font-medium text-gray-700 mb-3">Intervalo</label><div className="flex space-x-4">
+            <button onClick={()=>setForm({...form,slotDuration:30})} className={`flex-1 py-3 rounded-xl border-2 font-medium ${form.slotDuration===30?'':'border-gray-200 text-gray-600'}`} style={{borderColor:form.slotDuration===30?form.color:undefined,color:form.slotDuration===30?form.color:undefined}}>30 min</button>
+            <button onClick={()=>setForm({...form,slotDuration:60})} className={`flex-1 py-3 rounded-xl border-2 font-medium ${form.slotDuration===60?'':'border-gray-200 text-gray-600'}`} style={{borderColor:form.slotDuration===60?form.color:undefined,color:form.slotDuration===60?form.color:undefined}}>1 hora</button>
+          </div></div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div><label className="block text-sm font-medium text-gray-700 mb-2">Início</label><input type="time" value={form.startHour} onChange={e=>setForm({...form,startHour:e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3"/></div>
+            <div><label className="block text-sm font-medium text-gray-700 mb-2">Fim</label><input type="time" value={form.endHour} onChange={e=>setForm({...form,endHour:e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3"/></div>
+          </div>
+          <button onClick={()=>onSave(form)} className="w-full py-4 mt-4 rounded-xl text-white font-bold shadow-lg" style={{background:form.gradient||form.color}}>Salvar Alterações</button>
+        </div>
+      );
+    }
+
+    function AppointmentModal({ isOpen, onClose, onSave, onDelete, onToggleStatus, initialData, selectedDate, branding }) {
+      const [form, setForm] = useState({ clientName:'', service:'', value:'', time:'09:00', date:selectedDate.toISOString().split('T')[0], ...initialData });
+      const [del, setDel] = useState(false);
+      if (!isOpen) return null;
+      const isEdit = !!initialData?.id;
+      return (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl p-6 relative animate-slide-up">
+            <button onClick={onClose} className="absolute top-4 right-4 text-gray-400"><Plus size={24} className="rotate-45"/></button>
+            <h2 className="text-xl font-bold text-gray-800 mb-6">{isEdit ? 'Editar' : 'Novo'}</h2>
+            <form onSubmit={e=>{e.preventDefault(); onSave(form)}} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                 <div><label className="text-xs font-bold text-gray-500 uppercase">Data</label><input type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})} required className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3"/></div>
+                 <div><label className="text-xs font-bold text-gray-500 uppercase">Hora</label><input type="time" value={form.time} onChange={e=>setForm({...form,time:e.target.value})} required className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3"/></div>
+              </div>
+              <div><label className="text-xs font-bold text-gray-500 uppercase">Cliente</label><div className="flex items-center bg-gray-50 border border-gray-200 rounded-xl p-3"><User size={18} className="text-gray-400 mr-3"/><input type="text" required value={form.clientName} onChange={e=>setForm({...form,clientName:e.target.value})} className="bg-transparent w-full outline-none"/></div></div>
+              <div><label className="text-xs font-bold text-gray-500 uppercase">Serviço</label><div className="flex items-center bg-gray-50 border border-gray-200 rounded-xl p-3"><Scissors size={18} className="text-gray-400 mr-3"/><input type="text" required value={form.service} onChange={e=>setForm({...form,service:e.target.value})} className="bg-transparent w-full outline-none"/></div></div>
+              <div><label className="text-xs font-bold text-gray-500 uppercase">Valor</label><div className="flex items-center bg-gray-50 border border-gray-200 rounded-xl p-3"><DollarSign size={18} className="text-gray-400 mr-3"/><input type="number" required step="0.01" value={form.value} onChange={e=>setForm({...form,value:e.target.value})} className="bg-transparent w-full outline-none"/></div></div>
+              
+              <div className="pt-4 flex flex-col gap-3">
+                {!del && <button type="submit" className="w-full py-3.5 rounded-xl text-white font-bold shadow-md flex justify-center items-center" style={{background:branding.gradient||branding.color}}><Save size={18} className="mr-2"/> Salvar</button>}
+                {isEdit && (
+                  <div className="flex gap-3">
+                     {!del && <button type="button" onClick={()=>onToggleStatus(initialData)} className={`flex-1 py-3 rounded-xl font-bold border-2 ${initialData.status==='completed'?'border-yellow-400 text-yellow-600':'border-green-500 text-green-600'}`}>{initialData.status==='completed'?'Reabrir':'Finalizar'}</button>}
+                    <button type="button" onClick={()=>{if(del) onDelete(initialData.id); else {setDel(true); setTimeout(()=>setDel(false),3000);}}} className={`flex-1 py-3 rounded-xl font-bold border-2 transition flex justify-center items-center ${del?'bg-red-500 text-white border-red-500 w-full':'text-red-500 border-red-100 hover:bg-red-50'}`}>
+                      {del ? <><AlertCircle size={18} className="mr-2"/> Confirmar?</> : <><Trash2 size={18} className="mr-2"/> Excluir</>}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    // Renderização Inicial
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<AgendaApp />);
+  </script>
+</body>
+</html>
